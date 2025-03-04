@@ -4,6 +4,8 @@ This application integrates the [dynamicprompts](https://github.com/adieyal/dyna
 
 ## Features
 
+![alt text](image.png)
+
 - Sequential artist switching (cyclical sampler)
 - Random general and elements selection
 - Custom save location for generated images
