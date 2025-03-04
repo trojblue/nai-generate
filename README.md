@@ -28,28 +28,43 @@ The application will:
 
 ## Installation
 
-1. Clone this repository
-2. Install dependencies:
+1. Clone this repository:
+
+   ```bash
+   git clone https://github.com/trojblue/nai-generate
+   cd nai-generate
    ```
-   pip install -r requirements.txt
+
+2. Install the project:
+   ```
+   pip install -e .
    ```
 
 ## Usage
 
-1. Run the application:
-   ```
-   python app.py
+1. Create a configuration file (e.g., `config.toml`) with the following format:
+
+   - see: [config.toml.example](config.toml.example) for an example configuration file
+
+   ```toml
+   [novelai]
+   endpoint = "https://image.novelai.net/ai/generate-image"
+   token = "pst-XXXX"
+
+   [app]
+   save_dir = "./generated_images"
    ```
 
-2. Access the UI in your browser (typically at http://127.0.0.1:7860)
+2. Run the application (in the terminal):
+   ```bashw
+   # reads config in current directory
+   nai-generate 
 
-3. Enter the following information:
-   - API URL and API Key for your image generation service
-   - Model name
-   - List of artists (one per line)
-   - Prompt template with `{artist}` placeholder and variant options
-   - Save location for generated images
-   - Number of images to generate
+   # full config path + gradio share
+   nai-generate --config config.toml --share
+   ```
+
+3. Access the UI in your browser (typically at http://127.0.0.1:7860)
 
 4. Click "Generate Images" to start the generation process
 
@@ -76,6 +91,12 @@ This will generate sequential images with:
 
 ## Notes
 
-- The API integration is generic and may need to be adjusted based on the specific image generation API you're using.
-- Images are saved to the specified location with timestamps in the filename.
-- You can view the generated prompts in the UI to understand which artist and options were used for each image.
+
+To build wheels manually, run the following commands:
+
+```bash
+python -m pip install build twine
+python -m build
+twine check dist/*
+twine upload dist/*
+```
