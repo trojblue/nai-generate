@@ -63,7 +63,8 @@ def generate_with_novelai(
         prompts=prompts,
         negative_prompt=negative_prompt,
         seeds=seeds,
-        output_dir=save_dir
+        output_dir=save_dir,
+        wait=1.0  # Wait 1 second between requests
     )
     
     return results
@@ -90,6 +91,13 @@ def generate_images(api_token, api_url, model, artist_list, prompt_template, sav
     Returns:
         Tuple of (list of image paths, prompt output text)
     """
+    # Use token from environment if available and not provided in UI
+    if not api_token and os.environ.get("NOVELAI_PST_TOKEN"):
+        api_token = os.environ.get("NOVELAI_PST_TOKEN")
+    
+    if not api_token:
+        return [], "Error: NovelAI API token not provided."
+    
     # Create save directory if it doesn't exist
     save_path = Path(save_location)
     save_path.mkdir(parents=True, exist_ok=True)
@@ -149,34 +157,49 @@ def generate_images(api_token, api_url, model, artist_list, prompt_template, sav
 
 def create_ui():
     """Create Gradio UI for the image generator."""
+    # Get default save location from environment
+    default_save_dir = os.environ.get("NAI_GENERATE_SAVE_DIR", "./generated_images")
+    
+    # Check if token is already in environment
+    has_token_in_env = bool(os.environ.get("NOVELAI_PST_TOKEN"))
+    
     with gr.Blocks(title="Dynamic Prompts Image Generator") as app:
         gr.Markdown("# Dynamic Prompts Image Generator with NovelAI")
-        gr.Markdown("""
-        This application uses the dynamicprompts library to generate images with sequential artist cycling 
-        and random general/elements using NovelAI. 
         
-        **Instructions:**
-        1. Enter your NovelAI API token (starting with "pst-")
-        2. Select the model and other generation parameters
-        3. Paste a list of artists (one per line)
-        4. Enter a prompt template using {artist}, {general}, and {elements}
-        5. Click Generate Images
-        """)
+        if not has_token_in_env:
+            gr.Markdown("""
+            This application uses the dynamicprompts library to generate images with sequential artist cycling 
+            and random general/elements using NovelAI.
+            
+            **Note:** Please provide your NovelAI API token below or set it in config.toml.
+            """)
+        else:
+            gr.Markdown("""
+            This application uses the dynamicprompts library to generate images with sequential artist cycling 
+            and random general/elements using NovelAI.
+            
+            **Note:** NovelAI API token is loaded from configuration.
+            """)
         
         with gr.Row():
             with gr.Column(scale=1):
+                # Always create the API token input, but hide it if token is in env
                 api_token = gr.Textbox(
-                    label="NovelAI API Token", 
+                    label="NovelAI API Token (Optional if configured)", 
                     placeholder="pst-...",
                     type="password",
-                    info="Your NovelAI API token (starts with pst-)"
+                    info="Your NovelAI API token (starts with pst-)",
+                    visible=not has_token_in_env,
+                    value="" # Empty string instead of None
                 )
+                
                 api_url = gr.Textbox(
                     label="API URL", 
                     placeholder="https://api.novelai.net",
                     value="https://api.novelai.net",
                     visible=False  # Hidden since we're using the built-in NovelAI functionality
                 )
+                
                 model = gr.Dropdown(
                     label="Model", 
                     choices=["nai-diffusion-4-full", "nai-diffusion-3", "nai-diffusion-2", "nai-diffusion"],
@@ -224,14 +247,6 @@ def create_ui():
                             value="k_euler_ancestral",
                             info="Sampling method"
                         )
-                
-                artist_list = gr.Textbox(
-                    label="Artist List (one per line)", 
-                    placeholder="van Gogh\nPicasso\nDa Vinci\nMonet",
-                    lines=8,
-                    info="Enter artist names, one per line. These will be cycled through sequentially."
-                )
-                
                 prompt_template = gr.Textbox(
                     label="Prompt Template", 
                     placeholder="{artist}, {general}, {elements}",
@@ -239,11 +254,18 @@ def create_ui():
                     lines=4,
                     info="Use {artist} for artist names, and variants like {option1|option2} for random selection"
                 )
-                
+
+                artist_list = gr.Textbox(
+                    label="Artist List (one per line)", 
+                    placeholder="sy4\nnaga_u\nwlop\nsyuri22\nsoresaki\npumpkinspicelatte",
+                    lines=8,
+                    info="Enter artist names, one per line. These will be cycled through sequentially."
+                )
+
                 save_location = gr.Textbox(
                     label="Save Location", 
                     placeholder="./generated_images",
-                    value="./generated_images",
+                    value=default_save_dir,
                     info="Directory where images will be saved"
                 )
                 
@@ -272,12 +294,15 @@ def create_ui():
                     info="The prompts used to generate each image"
                 )
         
+        # Always include all inputs in the list
+        inputs = [
+            api_token, api_url, model, artist_list, prompt_template, save_location, num_images,
+            negative_prompt, width, height, steps, sampler
+        ]
+            
         generate_button.click(
             fn=generate_images,
-            inputs=[
-                api_token, api_url, model, artist_list, prompt_template, save_location, num_images,
-                negative_prompt, width, height, steps, sampler
-            ],
+            inputs=inputs,
             outputs=[gallery, prompt_output]
         )
     

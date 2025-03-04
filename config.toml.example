@@ -3,11 +3,15 @@
 
 [novelai]
 # Your NovelAI API endpoint
-# endpoint = "https://image.novelai.net/ai/generate-image"
-endpoint = "https://staging-image.novelai.net/ai/generate-image"
+endpoint = "https://image.novelai.net/ai/generate-image"
+# endpoint = "https://staging-image.novelai.net/ai/generate-image"
 
 # Your NovelAI persistent token (starts with pst-)
-token = "pst-tw4HYRjqfe49eYEPI4KiCRNw7nZX77oxnalcSmtr1qhYzfvXILVfKK0yxQIP43Nv"
+# - Go to https://novelai.net/stories
+# - Open top left tab (user settings) → Account
+# - Click "Get Persistent API Token"w
+
+token = "pst-XXXX"
 
 # Optional app settings
 [app]

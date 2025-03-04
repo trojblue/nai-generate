@@ -451,7 +451,8 @@ class NovelAIInference():
         steps: int = None,
         sampler: str = None,
         model: str = None,
-        output_dir: str = None
+        output_dir: str = None,
+        wait:float = 1.5
     ) -> List[Dict]:
         """Generate multiple images from text prompts.
         
@@ -472,61 +473,43 @@ class NovelAIInference():
         # Create output directory if needed
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
-        
-        # Run the async function and get the result
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            # No event loop exists, create one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-        if loop.is_running():
-            # We're in an async context
-            import nest_asyncio
-            nest_asyncio.apply()  # Allow nested event loops
-            
-        # Synchronously execute the async function
-        completed_results = loop.run_until_complete(self._generate_multiple_async(
-            prompts=prompts,
-            negative_prompt=negative_prompt,
-            seeds=seeds,
-            width=width,
-            height=height,
-            steps=steps,
-            sampler=sampler,
-            model=model
-        ))
-        
+
         results = []
-        
-        # Process each result
-        for i, (prompt, seed, result) in enumerate(completed_results):
-            if not result:
-                logger.warning(f"Failed to generate image for prompt: {prompt}")
-                continue
+
+        # Generate images sequentially
+        for i, prompt in enumerate(prompts):
+            seed = seeds[i] if seeds and i < len(seeds) else random.randint(0, 4294967295)
+            
+            result = self.generate_image(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                seed=seed,
+                width=width,
+                height=height,
+                steps=steps,
+                sampler=sampler,
+                model=model
+            )
+            
+            if result:
+                save_path = None
+                if output_dir:
+                    save_path = os.path.join(output_dir, f"generated_{i:04d}_{seed}.png")
+                    result.save(save_path)
+                    logger.info(f"Saved generated image to {save_path}")
                 
-            # Get the first (and usually only) image
-            filename, image_data = result[0]
+                results.append({
+                    "prompt": prompt,
+                    "seed": seed,
+                    "image": result,
+                    "path": save_path
+                })
+            else:
+                logger.warning(f"Failed to generate image for prompt: {prompt}")
             
-            # Save the image if a path is provided
-            save_path = None
-            if output_dir:
-                save_path = os.path.join(output_dir, f"generated_{i:04d}_{seed}.png")
-                with open(save_path, "wb") as f:
-                    f.write(image_data)
-                logger.info(f"Saved generated image to {save_path}")
-            
-            # Create PIL image
-            pil_image = Image.open(BytesIO(image_data))
-            
-            results.append({
-                "prompt": prompt,
-                "seed": seed,
-                "image": pil_image,
-                "path": save_path
-            })
-            
+            # Sleep to avoid rate limits
+            time.sleep(wait)
+        
         return results
     
     def infer_one(self, text_prompt: str, **kwargs):
