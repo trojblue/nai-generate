@@ -28,17 +28,20 @@ The application will:
 
 ## Installation
 
-1. Clone this repository:
+1. You can install the project directly from GitHub:
 
    ```bash
    git clone https://github.com/trojblue/nai-generate
    cd nai-generate
-   ```
-
-2. Install the project:
-   ```
    pip install -e .
    ```
+
+2. (Or from pypi for a quick install but less flexible):
+
+   ```bash
+   pip install nai-generate
+   ```
+
 
 ## Usage
 
