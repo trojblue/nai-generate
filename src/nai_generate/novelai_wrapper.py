@@ -12,6 +12,7 @@ import pandas as pd
 
 from PIL import Image
 from curl_cffi.requests import AsyncSession
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -441,6 +442,19 @@ class NovelAIInference():
         
         return completed_results
 
+    def get_next_id(self, output_dir: str) -> int:
+        """Determine the next available ID based on existing files in the directory."""
+        existing_ids = []
+        pattern = re.compile(r'generated_(\d{4})_\d+_.*\.png')
+        
+        if os.path.exists(output_dir):
+            for filename in os.listdir(output_dir):
+                match = pattern.match(filename)
+                if match:
+                    existing_ids.append(int(match.group(1)))
+        
+        return max(existing_ids, default=0) + 1
+
     def generate_multiple(
         self, 
         prompts: List[str],
@@ -452,32 +466,17 @@ class NovelAIInference():
         sampler: str = None,
         model: str = None,
         output_dir: str = None,
-        wait:float = 1.5
+        wait: float = 1.5
     ) -> List[Dict]:
-        """Generate multiple images from text prompts.
-        
-        Args:
-            prompts: List of text prompts
-            negative_prompt: Negative prompt for all images (optional)
-            seeds: List of random seeds (optional)
-            width: Image width (optional)
-            height: Image height (optional)
-            steps: Number of diffusion steps (optional)
-            sampler: Sampling method (optional)
-            model: Model name (optional)
-            output_dir: Directory to save generated images (optional)
-            
-        Returns:
-            List[Dict]: List of dictionaries with 'prompt', 'seed', and 'image' keys
-        """
-        # Create output directory if needed
+        """Generate multiple images from text prompts, continuing ID numbering from existing files."""
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
-
+        
         results = []
+        next_id = self.get_next_id(output_dir)  # Determine starting ID
 
-        # Generate images sequentially
         for i, prompt in enumerate(prompts):
+            print(f"Generating image {i+1}/{len(prompts)}: {prompt}")
             seed = seeds[i] if seeds and i < len(seeds) else random.randint(0, 4294967295)
             
             result = self.generate_image(
@@ -494,9 +493,14 @@ class NovelAIInference():
             if result:
                 save_path = None
                 if output_dir:
-                    save_path = os.path.join(output_dir, f"generated_{i:04d}_{seed}.png")
+                    partial_prompt = prompt[:20]
+                    partial_prompt_sanitized = re.sub(r'[^a-zA-Z0-9_-]+', '_', partial_prompt).strip("_")
+                    
+                    new_filename = f"generated_{next_id:04d}_{seed}_{partial_prompt_sanitized}.png"
+                    save_path = os.path.join(output_dir, new_filename)
                     result.save(save_path)
                     logger.info(f"Saved generated image to {save_path}")
+                    next_id += 1  # Increment ID after saving
                 
                 results.append({
                     "prompt": prompt,
@@ -507,7 +511,6 @@ class NovelAIInference():
             else:
                 logger.warning(f"Failed to generate image for prompt: {prompt}")
             
-            # Sleep to avoid rate limits
             time.sleep(wait)
         
         return results

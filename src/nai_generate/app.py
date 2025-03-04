@@ -1,8 +1,9 @@
 import gradio as gr
 import os
 import time
-from pathlib import Path
 import random
+import re
+from pathlib import Path
 from typing import List, Dict, Any
 from PIL import Image
 
@@ -69,34 +70,43 @@ def generate_with_novelai(
     
     return results
 
-def generate_images(api_token, api_url, model, artist_list, prompt_template, save_location, num_images, negative_prompt=None, width=832, height=1216, steps=28, sampler="k_euler_ancestral"):
+def generate_images(
+    api_token,
+    api_url,
+    model,
+    artist_list,
+    prompt_template,
+    save_location,
+    num_images,
+    negative_prompt=None,
+    width=832,
+    height=1216,
+    steps=28,
+    sampler="k_euler_ancestral"
+):
     """
     Generate images using dynamic prompts with sequential artist switching
     and random general/elements.
     
-    Args:
-        api_token: NovelAI API token
-        api_url: Not used, kept for compatibility
-        model: Model name to use
-        artist_list: List of artists (one per line)
-        prompt_template: Template for prompts with {artist} placeholder
-        save_location: Directory to save images to
-        num_images: Number of images to generate
-        negative_prompt: Optional negative prompt
-        width: Image width
-        height: Image height
-        steps: Number of diffusion steps
-        sampler: Sampler method
-        
-    Returns:
-        Tuple of (list of image paths, prompt output text)
+    Returns a tuple of:
+      - list of image paths (for Gradio gallery)
+      - string of generated prompts (for Textbox)
+      - string of logs (for the logs output)
     """
+    logs = []
+    gallery_images = []
+    generated_prompts_text = []
+
     # Use token from environment if available and not provided in UI
     if not api_token and os.environ.get("NOVELAI_PST_TOKEN"):
         api_token = os.environ.get("NOVELAI_PST_TOKEN")
     
+    # If still no token, we can’t proceed
     if not api_token:
-        return [], "Error: NovelAI API token not provided."
+        error_msg = "Error: NovelAI API token not provided."
+        print(error_msg)
+        logs.append(error_msg)
+        return [], "", "\n".join(logs)
     
     # Create save directory if it doesn't exist
     save_path = Path(save_location)
@@ -105,7 +115,10 @@ def generate_images(api_token, api_url, model, artist_list, prompt_template, sav
     # Parse artist list
     artists = [artist.strip() for artist in artist_list.strip().split('\n') if artist.strip()]
     if not artists:
-        return [], "No artists provided"
+        error_msg = "No artists provided."
+        print(error_msg)
+        logs.append(error_msg)
+        return [], "", "\n".join(logs)
     
     # Create the dynamic prompt with sequential artists and random general/elements
     # Use the @ prefix for cyclical sampling of artists
@@ -115,15 +128,16 @@ def generate_images(api_token, api_url, model, artist_list, prompt_template, sav
     # Use RandomPromptGenerator which will handle the mixed sampling methods
     generator = RandomPromptGenerator()
     
-    # Generate prompts
+    # Generate the list of prompts
     generated_prompts = generator.generate(prompt_with_artists, num_images)
-    
+    print(f"Created {len(generated_prompts)} prompts to generate")
+    logs.append(f"Created {len(generated_prompts)} prompts to generate")
+
     # Generate images with NovelAI
     try:
         # Generate random seeds for reproducibility
         seeds = [random.randint(0, 4294967295) for _ in range(num_images)]
         
-        # Generate images
         results = generate_with_novelai(
             prompts=generated_prompts,
             api_token=api_token,
@@ -138,22 +152,25 @@ def generate_images(api_token, api_url, model, artist_list, prompt_template, sav
         )
         
         # Prepare output data
-        gallery_images = []
-        generated_prompts_text = []
-        
         for i, result in enumerate(results):
             prompt = result["prompt"]
             seed = result["seed"]
-            save_path = result["path"]
+            path_to_image = result["path"]
             
             generated_prompts_text.append(f"Image {i+1}: {prompt} (seed: {seed})")
-            gallery_images.append(save_path)
+            gallery_images.append(path_to_image)
         
-        return gallery_images, "\n".join(generated_prompts_text)
-        
+        print("Image generation successful.")
+        logs.append("Image generation successful.")
+
     except Exception as e:
         error_msg = f"Error generating images: {str(e)}"
-        return [], error_msg
+        print(error_msg)
+        logs.append(error_msg)
+        return [], "", "\n".join(logs)
+
+    # Return gallery, text, and logs
+    return gallery_images, "\n".join(generated_prompts_text), "\n".join(logs)
 
 def create_ui():
     """Create Gradio UI for the image generator."""
@@ -190,14 +207,14 @@ def create_ui():
                     type="password",
                     info="Your NovelAI API token (starts with pst-)",
                     visible=not has_token_in_env,
-                    value="" # Empty string instead of None
+                    value=""  # Empty string
                 )
                 
                 api_url = gr.Textbox(
                     label="API URL", 
                     placeholder="https://api.novelai.net",
                     value="https://api.novelai.net",
-                    visible=False  # Hidden since we're using the built-in NovelAI functionality
+                    visible=False  # Hidden since we’re using NovelAI’s built-in URL
                 )
                 
                 model = gr.Dropdown(
@@ -210,6 +227,7 @@ def create_ui():
                 with gr.Accordion("Advanced Settings", open=False):
                     negative_prompt = gr.Textbox(
                         label="Negative Prompt", 
+                        value="blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, white blank page, blank page, blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, white blank page, blank page",
                         placeholder="Low quality, bad anatomy, worst quality, low quality",
                         info="Leave empty to use default NovelAI negative prompt"
                     )
@@ -250,13 +268,14 @@ def create_ui():
                 prompt_template = gr.Textbox(
                     label="Prompt Template", 
                     placeholder="{artist}, {general}, {elements}",
-                    value="A painting by {artist}, {landscape|portrait|still life}, {vibrant colors|muted tones|black and white}",
+                    value="{artist}, {landscape|portrait|still life}, {vibrant colors|muted tones|black and white}, 1girl, long hair, eating, no text, best quality, very aesthetic, absurdres",
                     lines=4,
                     info="Use {artist} for artist names, and variants like {option1|option2} for random selection"
                 )
 
                 artist_list = gr.Textbox(
                     label="Artist List (one per line)", 
+                    value="sy4\nnaga_u\nwlop\nsyuri22\nsoresaki\npumpkinspicelatte",
                     placeholder="sy4\nnaga_u\nwlop\nsyuri22\nsoresaki\npumpkinspicelatte",
                     lines=8,
                     info="Enter artist names, one per line. These will be cycled through sequentially."
@@ -269,11 +288,11 @@ def create_ui():
                     info="Directory where images will be saved"
                 )
                 
-                num_images = gr.Slider(
-                    label="Number of Images to Generate", 
+                num_images = gr.Number(
+                    label="Total number of Images to Generate", 
                     minimum=1, 
-                    maximum=20, 
-                    value=5, 
+                    maximum=100000, 
+                    value=6, 
                     step=1,
                     info="How many images to generate"
                 )
@@ -293,17 +312,39 @@ def create_ui():
                     lines=10,
                     info="The prompts used to generate each image"
                 )
-        
-        # Always include all inputs in the list
+
+        # LOGS accordion
+        with gr.Accordion("📂 Logs (Click to Expand)", open=False):
+            log_output = gr.Textbox(
+                label="Logs",
+                lines=8,
+                interactive=False
+            )
+
+        # When we click the generate button, we get three outputs:
+        # - gallery (list of images)
+        # - prompt_output (generated prompts text)
+        # - log_output (logs)
         inputs = [
-            api_token, api_url, model, artist_list, prompt_template, save_location, num_images,
-            negative_prompt, width, height, steps, sampler
+            api_token, 
+            api_url, 
+            model, 
+            artist_list, 
+            prompt_template, 
+            save_location, 
+            num_images,
+            negative_prompt, 
+            width, 
+            height, 
+            steps, 
+            sampler
         ]
-            
+        outputs = [gallery, prompt_output, log_output]
+
         generate_button.click(
             fn=generate_images,
             inputs=inputs,
-            outputs=[gallery, prompt_output]
+            outputs=outputs
         )
     
     return app
