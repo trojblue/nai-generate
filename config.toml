@@ -1,0 +1,13 @@
+# Example configuration file for nai-generate
+# Rename to config.toml and customize with your settings
+
+[novelai]
+# Your NovelAI API endpoint
+endpoint = "https://image.novelai.net/ai/generate-image"
+# Your NovelAI persistent token (starts with pst-)
+token = "pst-your-token-here"
+
+# Optional app settings
+[app]
+# Default save directory for generated images
+save_dir = "./generated_images"
